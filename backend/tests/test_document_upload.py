@@ -1,10 +1,12 @@
 """
-Stage 3 checkpoint (BUILD_INSTRUCTIONS.md): upload a PDF via the API and
-confirm it's parsed, chunked, and embedded into `user_documents` correctly.
+Stage 3 checkpoint (BUILD_INSTRUCTIONS.md): upload a document via the API
+and confirm it's parsed, chunked, and embedded into `user_documents`
+correctly. Covers both supported formats (PDF, Word .docx).
 """
 import io
 import time
 
+import docx
 import pymupdf
 import pytest
 from fastapi.testclient import TestClient
@@ -18,6 +20,8 @@ CONTRACT_TEXT_PARAGRAPHS = [
     "2. Security Deposit. The Tenant shall pay a refundable security deposit of Rs. 30,000.",
     "3. Termination. Either party may terminate this agreement with 30 days written notice.",
 ]
+
+DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 def make_test_pdf_bytes() -> bytes:
@@ -33,17 +37,24 @@ def make_test_pdf_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def make_test_docx_bytes() -> bytes:
+    document = docx.Document()
+    for paragraph in CONTRACT_TEXT_PARAGRAPHS:
+        document.add_paragraph(paragraph)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
 @pytest.fixture
 def client():
     return TestClient(app)
 
 
-def test_upload_parses_chunks_and_embeds_into_user_documents(client):
-    pdf_bytes = make_test_pdf_bytes()
-
+def _upload_and_wait_for_completion(client, filename: str, file_bytes: bytes, content_type: str):
     response = client.post(
         "/api/documents/upload",
-        files={"file": ("rental_agreement.pdf", pdf_bytes, "application/pdf")},
+        files={"file": (filename, file_bytes, content_type)},
     )
     assert response.status_code == 200
     doc_id = response.json()["doc_id"]
@@ -54,6 +65,14 @@ def test_upload_parses_chunks_and_embeds_into_user_documents(client):
         if status["status"] in ("complete", "failed"):
             break
         time.sleep(0.5)
+
+    return doc_id, status
+
+
+def test_upload_parses_chunks_and_embeds_into_user_documents(client):
+    doc_id, status = _upload_and_wait_for_completion(
+        client, "rental_agreement.pdf", make_test_pdf_bytes(), "application/pdf"
+    )
 
     assert status["status"] == "complete", status
     assert status["chunk_count"] >= 1
@@ -67,7 +86,23 @@ def test_upload_parses_chunks_and_embeds_into_user_documents(client):
     collection.delete(ids=stored["ids"])
 
 
-def test_upload_rejects_non_pdf(client):
+def test_docx_upload_parses_chunks_and_embeds_into_user_documents(client):
+    doc_id, status = _upload_and_wait_for_completion(
+        client, "rental_agreement.docx", make_test_docx_bytes(), DOCX_CONTENT_TYPE
+    )
+
+    assert status["status"] == "complete", status
+    assert status["chunk_count"] >= 1
+
+    collection = get_user_documents_collection()
+    stored = collection.get(where={"doc_id": doc_id}, include=["documents", "metadatas"])
+    assert len(stored["ids"]) == status["chunk_count"]
+    assert any("Termination" in doc for doc in stored["documents"])
+
+    collection.delete(ids=stored["ids"])
+
+
+def test_upload_rejects_unsupported_type(client):
     response = client.post(
         "/api/documents/upload",
         files={"file": ("notes.txt", b"just some text", "text/plain")},

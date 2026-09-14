@@ -15,22 +15,22 @@ from backend.agents.crew_analysis import run_analysis_crew
 from backend.retrieval.chroma_client import get_user_documents_collection
 from backend.retrieval.embeddings import embed_texts
 from backend.services import analysis_storage, document_storage, job_queue
-from backend.tools.pdf_parser_tool import extract_text_from_pdf_bytes
 from backend.utils.chunking import chunk_document
+from backend.utils.document_extraction import extract_text
 from backend.utils.validators import UploadValidationError, validate_upload
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 
-def process_document(doc_id: str, file_bytes: bytes) -> None:
+def process_document(doc_id: str, file_bytes: bytes, content_type: str) -> None:
     try:
         job_queue.set_status(doc_id, "parsing")
-        text = extract_text_from_pdf_bytes(file_bytes)
+        text = extract_text(content_type, file_bytes)
 
         job_queue.set_status(doc_id, "chunking")
         chunks = chunk_document(text)
         if not chunks:
-            raise ValueError("No extractable text found in this PDF (it may be a scanned image).")
+            raise ValueError("No extractable text found in this document (it may be a scanned image).")
 
         job_queue.set_status(doc_id, "embedding")
         embeddings = embed_texts(chunks)
@@ -64,7 +64,7 @@ async def upload_document(background_tasks: BackgroundTasks, file: UploadFile):
     doc_id = str(uuid.uuid4())
     document_storage.create_document(doc_id, file.filename)
     job_queue.set_status(doc_id, "uploaded")
-    background_tasks.add_task(process_document, doc_id, file_bytes)
+    background_tasks.add_task(process_document, doc_id, file_bytes, file.content_type)
     return {"doc_id": doc_id}
 
 

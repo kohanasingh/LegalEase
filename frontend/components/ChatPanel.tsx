@@ -7,9 +7,10 @@ import type { ChatMessage } from "@/lib/types";
 
 interface ChatPanelProps {
   docId: string;
+  exampleQuestion?: string | null;
 }
 
-export default function ChatPanel({ docId }: ChatPanelProps) {
+export default function ChatPanel({ docId, exampleQuestion }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -43,8 +44,20 @@ export default function ChatPanel({ docId }: ChatPanelProps) {
       <div className="mt-4 flex-1 space-y-3 overflow-y-auto">
         {messages.length === 0 && (
           <p className="text-sm text-slate-500">
-            Ask anything about this document — e.g. &ldquo;Can my landlord keep my
-            deposit?&rdquo;
+            {exampleQuestion ? (
+              <>
+                Ask anything about this document — e.g.{" "}
+                <button
+                  type="button"
+                  onClick={() => setInput(exampleQuestion)}
+                  className="underline hover:text-blue-600"
+                >
+                  &ldquo;{exampleQuestion}&rdquo;
+                </button>
+              </>
+            ) : (
+              "Ask anything about this document."
+            )}
           </p>
         )}
         {messages.map((message, index) => (

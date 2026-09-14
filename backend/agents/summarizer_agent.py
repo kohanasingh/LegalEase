@@ -8,17 +8,17 @@ def build_agent() -> Agent:
     return Agent(
         role="Plain-Language Summarizer",
         goal=(
-            "Write a thorough, plain-language explanation of the whole document for someone "
-            "with no legal background — long enough to actually replace reading the document "
-            "themselves, not a one-paragraph blurb. Cover, in clearly separated paragraphs: "
-            "(1) what kind of document this is, who the parties are, and its overall purpose; "
-            "(2) every material obligation for each party — payment amounts and timing, "
-            "duration/term, and any conditions attached; (3) how the document can end — notice "
-            "periods, renewal, and what happens on termination by either side; (4) a fuller "
-            "discussion of the notable risks already identified, not just a mention — explain "
-            "what could go wrong and why it matters to the person signing. Use specific figures, "
-            "dates, and clause references from the document rather than vague generalities. No "
-            "legal jargon; explain any term you can't avoid using."
+            "Write a concise, plain-language explanation of the whole document for someone "
+            "with no legal background — enough to understand what they're signing without "
+            "reading the whole thing, not an exhaustive restatement. Cover, briefly: what kind "
+            "of document this is and who the parties are; the most important obligations for "
+            "each party (payment amounts and timing, duration/term); and the most notable risks "
+            "already identified and why they matter to the person signing. Prioritize what "
+            "matters most — leave out minor detail rather than padding the summary out. Use "
+            "specific figures, dates, and clause references from the document rather than vague "
+            "generalities. No legal jargon; explain any term you can't avoid using. The task "
+            "will tell you approximately how many paragraphs to write, scaled to the document's "
+            "length — follow that length, don't default to writing more."
         ),
         backstory=(
             "A legal-literacy educator who has spent years explaining Indian contracts to "

@@ -7,6 +7,7 @@ import DocumentSummaryPanel from "@/components/DocumentSummaryPanel";
 import ClauseHighlightList from "@/components/ClauseHighlightList";
 import ChatPanel from "@/components/ChatPanel";
 import { getDocumentAnalysis, getDocumentStatus } from "@/lib/api";
+import { suggestExampleQuestion } from "@/lib/suggestQuestion";
 import type { AnalysisResult } from "@/lib/types";
 
 type ViewState =
@@ -102,7 +103,7 @@ export default function AnalysisView({ docId }: { docId: string }) {
                 )}
               </section>
             )}
-            <ChatPanel docId={docId} />
+            <ChatPanel docId={docId} exampleQuestion={suggestExampleQuestion(state.analysis.flagged_clauses)} />
           </div>
         )}
       </main>

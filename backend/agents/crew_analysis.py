@@ -79,25 +79,35 @@ def run_analysis_crew(raw_text: str) -> GuardrailAnnotation:
         output_pydantic=RiskAnalysisResult,
     )
 
+    # Scale summary length to the document instead of a fixed paragraph count
+    # (~500 words/page is a standard estimate for a normally-formatted
+    # document), capped so a very long contract doesn't demand a
+    # unreasonably long summary.
+    word_count = len(raw_text.split())
+    estimated_pages = max(1, min(8, round(word_count / 500)))
+    paragraph_word = "paragraph" if estimated_pages == 1 else "paragraphs"
+
     summarize_task = Task(
         description=(
             "Using the full structured document text and the risk-flagged clauses below, "
-            "write a thorough plain-language explanation for a layperson: what the document "
-            "is and who it's between, every material obligation for each party (with actual "
-            "figures/dates/durations from the document), how the agreement can end, and a full "
-            "discussion of the notable risks already identified and why they matter — not a "
-            "short blurb.\n\n"
-            "Format requirement: write exactly four paragraphs, in this order — (1) overview, "
-            "(2) obligations, (3) how it can end, (4) risks. Put a literal blank line (two "
-            "newline characters) between each paragraph, like this skeleton:\n"
-            "<overview paragraph>\n\n<obligations paragraph>\n\n<termination paragraph>\n\n"
-            "<risks paragraph>\n"
-            "Do not merge these into one paragraph."
+            "write a concise plain-language explanation for a layperson: what the document is "
+            "and who it's between, the most important obligations for each party (with actual "
+            "figures/dates/durations from the document where relevant), and the most notable "
+            "risks already identified and why they matter. This is a summary, not an exhaustive "
+            "restatement — prioritize the most important information and leave out minor detail "
+            "if you're short on space.\n\n"
+            f"Format requirement: write approximately {estimated_pages} {paragraph_word} total "
+            "(roughly one paragraph per page of the original document). "
+            + (
+                "Put a literal blank line (two newline characters) between each paragraph."
+                if estimated_pages > 1
+                else "A single paragraph is expected here — don't pad it out."
+            )
         ),
         expected_output=(
-            "Exactly four paragraphs separated by blank lines (two newline characters "
-            "between each), covering overview, obligations, termination, and risks in that "
-            "order, detailed enough to substitute for reading the document."
+            f"Approximately {estimated_pages} {paragraph_word}"
+            + (", separated by blank lines (two newline characters between each), " if estimated_pages > 1 else " ")
+            + "covering the document's purpose, key obligations, and notable risks — concise, not exhaustive."
         ),
         agent=summarizer,
         context=[parse_task, risk_task],

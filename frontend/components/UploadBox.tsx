@@ -36,7 +36,10 @@ export default function UploadBox() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { "application/pdf": [".pdf"] },
+    accept: {
+      "application/pdf": [".pdf"],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+    },
     maxSize: MAX_SIZE_BYTES,
     maxFiles: 1,
     disabled: isUploading,
@@ -60,7 +63,7 @@ export default function UploadBox() {
             <p className="text-lg font-medium text-brand-dark">
               Drop your document here, or click to browse
             </p>
-            <p className="mt-2 text-sm text-brand-text/70">PDF only, up to 20MB</p>
+            <p className="mt-2 text-sm text-brand-text/70">PDF or Word (.docx), up to 20MB</p>
           </>
         )}
       </div>

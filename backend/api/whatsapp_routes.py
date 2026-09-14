@@ -18,6 +18,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from backend.agents.crew_chat import run_chat_crew
 from backend.api.document_routes import process_document
 from backend.services import analysis_storage, document_storage, job_queue, whatsapp_service, whatsapp_session
+from backend.utils.document_extraction import SUPPORTED_CONTENT_TYPES
 from backend.utils.whatsapp_formatter import format_analysis, format_chat_answer
 
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
@@ -25,13 +26,13 @@ router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
 DISCLAIMER = "⚖️ LegalEase is informational only, not a substitute for professional legal advice."
 
 WELCOME_MESSAGE = (
-    f"👋 Welcome to LegalEase! Send a PDF document (rental agreement, contract, notice) "
-    f"and I'll explain it in plain language.\n\n{DISCLAIMER}"
+    f"👋 Welcome to LegalEase! Send a PDF or Word (.docx) document (rental agreement, "
+    f"contract, notice) and I'll explain it in plain language.\n\n{DISCLAIMER}"
 )
 
 
-def _process_whatsapp_document(whatsapp_number: str, doc_id: str, file_bytes: bytes) -> None:
-    process_document(doc_id, file_bytes)  # exact same pipeline as the web upload endpoint
+def _process_whatsapp_document(whatsapp_number: str, doc_id: str, file_bytes: bytes, content_type: str) -> None:
+    process_document(doc_id, file_bytes, content_type)  # exact same pipeline as the web upload endpoint
     status = job_queue.get_status(doc_id)
     if status and status.get("status") == "complete":
         analysis = analysis_storage.get_analysis(doc_id)
@@ -64,10 +65,10 @@ def whatsapp_webhook(
     num_media = int(NumMedia or "0")
 
     if num_media > 0:
-        if MediaContentType0 != "application/pdf":
+        if MediaContentType0 not in SUPPORTED_CONTENT_TYPES:
             twiml.message(
-                "I can only read PDF documents right now — please resend it as a PDF file, "
-                "not a photo."
+                "I can only read PDF or Word (.docx) documents right now — please resend it "
+                "as one of those, not a photo."
             )
             return Response(content=str(twiml), media_type="application/xml")
 
@@ -76,7 +77,7 @@ def whatsapp_webhook(
         document_storage.create_document(doc_id, f"whatsapp:{From}")
         whatsapp_session.set_active_doc(From, doc_id)
         job_queue.set_status(doc_id, "uploaded")
-        background_tasks.add_task(_process_whatsapp_document, From, doc_id, file_bytes)
+        background_tasks.add_task(_process_whatsapp_document, From, doc_id, file_bytes, MediaContentType0)
         twiml.message(
             f"{DISCLAIMER}\n\nGot your document! Analyzing now — this usually takes a couple "
             f"of minutes, I'll message you here with the results."

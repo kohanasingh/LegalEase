@@ -4,8 +4,8 @@ export default function WhatsAppDemoPage() {
       <h1 className="text-3xl font-bold text-slate-900">LegalEase on WhatsApp</h1>
       <p className="mt-4 text-slate-700">
         The same upload-and-ask pipeline as the web app, available through a Twilio
-        WhatsApp Sandbox number — send a document as a photo or PDF, get the same
-        plain-language analysis, and ask follow-up questions right in the chat.
+        WhatsApp Sandbox number — send a document as a PDF or Word (.docx) file, get the
+        same plain-language analysis, and ask follow-up questions right in the chat.
       </p>
 
       <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-slate-500">
