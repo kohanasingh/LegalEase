@@ -1,172 +1,35 @@
-import uuid
-import time
-from datetime import datetime, timedelta
-from typing import Dict, Optional, Any
+"""
+In-memory metadata store for uploaded documents (filename, upload time,
+chunk count). Separate from job_queue.py's processing-status tracking —
+this is durable-for-the-session document identity; status is transient
+pipeline progress. Both are equally ephemeral across restarts, consistent
+with user_documents being disposable (see CLAUDE.md).
+"""
 import threading
+from datetime import datetime, timezone
+from typing import Any
 
-class DocumentStorage:
-    """
-    In-memory document storage for the prototype
-    In production, this would be replaced with a proper database or cloud storage
-    """
-    
-    def __init__(self, session_timeout: int = 3600):
-        self.documents: Dict[str, Dict[str, Any]] = {}
-        self.session_timeout = session_timeout
-        self._lock = threading.Lock()
-        
-        # Start cleanup thread
-        self._start_cleanup_thread()
-    
-    def store_document(self, text: str, filename: str = None) -> str:
-        """
-        Store document text and return unique document ID
-        
-        Args:
-            text: Extracted document text
-            filename: Original filename (optional)
-        
-        Returns:
-            Unique document ID
-        """
-        
-        document_id = str(uuid.uuid4())
-        expires_at = datetime.utcnow() + timedelta(seconds=self.session_timeout)
-        
-        with self._lock:
-            self.documents[document_id] = {
-                'text': text,
-                'filename': filename,
-                'created_at': datetime.utcnow(),
-                'expires_at': expires_at,
-                'analysis_result': None
-            }
-        
-        return document_id
-    
-    def get_document(self, document_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Retrieve document by ID
-        
-        Args:
-            document_id: Document identifier
-        
-        Returns:
-            Document data or None if not found/expired
-        """
-        
-        with self._lock:
-            if document_id not in self.documents:
-                return None
-            
-            document = self.documents[document_id]
-            
-            # Check if expired
-            if datetime.utcnow() > document['expires_at']:
-                del self.documents[document_id]
-                return None
-            
-            return document.copy()
-    
-    def update_analysis(self, document_id: str, analysis_result: Dict[str, Any]) -> bool:
-        """
-        Update document with analysis results
-        
-        Args:
-            document_id: Document identifier
-            analysis_result: Analysis results from AI service
-        
-        Returns:
-            True if updated successfully, False if document not found
-        """
-        
-        with self._lock:
-            if document_id not in self.documents:
-                return False
-            
-            # Check if expired
-            if datetime.utcnow() > self.documents[document_id]['expires_at']:
-                del self.documents[document_id]
-                return False
-            
-            self.documents[document_id]['analysis_result'] = analysis_result
-            return True
-    
-    def delete_document(self, document_id: str) -> bool:
-        """
-        Delete document by ID
-        
-        Args:
-            document_id: Document identifier
-        
-        Returns:
-            True if deleted, False if not found
-        """
-        
-        with self._lock:
-            if document_id in self.documents:
-                del self.documents[document_id]
-                return True
-            return False
-    
-    def cleanup_expired(self) -> int:
-        """
-        Remove expired documents
-        
-        Returns:
-            Number of documents removed
-        """
-        
-        current_time = datetime.utcnow()
-        expired_ids = []
-        
-        with self._lock:
-            for doc_id, document in self.documents.items():
-                if current_time > document['expires_at']:
-                    expired_ids.append(doc_id)
-            
-            for doc_id in expired_ids:
-                del self.documents[doc_id]
-        
-        return len(expired_ids)
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """
-        Get storage statistics
-        
-        Returns:
-            Dictionary with storage stats
-        """
-        
-        with self._lock:
-            return {
-                'total_documents': len(self.documents),
-                'oldest_document': min(
-                    (doc['created_at'] for doc in self.documents.values()),
-                    default=None
-                ),
-                'newest_document': max(
-                    (doc['created_at'] for doc in self.documents.values()),
-                    default=None
-                )
-            }
-    
-    def _start_cleanup_thread(self):
-        """Start background thread for cleaning up expired documents"""
-        
-        def cleanup_worker():
-            while True:
-                try:
-                    removed = self.cleanup_expired()
-                    if removed > 0:
-                        print(f"Cleaned up {removed} expired documents")
-                    time.sleep(300)  # Run every 5 minutes
-                except Exception as e:
-                    print(f"Error in cleanup thread: {e}")
-                    time.sleep(60)  # Wait 1 minute before retrying
-        
-        cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
-        cleanup_thread.start()
+_lock = threading.Lock()
+_documents: dict[str, dict[str, Any]] = {}
 
-# Global document storage instance
-document_storage = DocumentStorage()
+
+def create_document(doc_id: str, filename: str) -> None:
+    with _lock:
+        _documents[doc_id] = {
+            "doc_id": doc_id,
+            "filename": filename,
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            "chunk_count": None,
+        }
+
+
+def set_chunk_count(doc_id: str, chunk_count: int) -> None:
+    with _lock:
+        if doc_id in _documents:
+            _documents[doc_id]["chunk_count"] = chunk_count
+
+
+def get_document(doc_id: str) -> dict[str, Any] | None:
+    with _lock:
+        doc = _documents.get(doc_id)
+        return dict(doc) if doc is not None else None

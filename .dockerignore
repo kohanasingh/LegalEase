@@ -1,0 +1,14 @@
+# Keep the Docker build context small - only backend/ and corpus/chroma_data/
+# are actually copied into the image (see deployment/Dockerfile.backend).
+.venv/
+.git/
+frontend/
+corpus/raw/
+corpus/scripts/
+scripts/
+__pycache__/
+*.pyc
+.env
+.env.local
+*.md
+.claude/

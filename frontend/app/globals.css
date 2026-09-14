@@ -1,0 +1,34 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+:root {
+  --background: #eaf4fb;
+  --foreground: #334e68;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Single-source brand palette (Tailwind v4 is CSS-config-first — there's
+     no tailwind.config.js in this project; these @theme tokens are the
+     equivalent single source of truth and generate the same utilities,
+     e.g. bg-brand-bg, text-brand-dark). Monochrome-blue on purpose: one
+     hue family from pale background to deep navy, chosen and contrast-
+     checked (WCAG AA) for a calm, trustworthy legal product, not a
+     flashy one. See CHANGES.md. */
+  --color-brand-bg: #eaf4fb; /* page background - pale pastel blue */
+  --color-brand-surface: #ffffff; /* cards/panels, floated on brand-bg */
+  --color-brand-border: #d9e8f5; /* soft dividers/borders, replaces slate-200 */
+  --color-brand-primary: #2b6cb0; /* buttons, links, accents - AA vs both brand-bg and white */
+  --color-brand-dark: #1a365d; /* headings, high-emphasis text */
+  --color-brand-text: #334e68; /* body copy - softened navy, not pure black */
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}

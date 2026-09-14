@@ -1,14 +1,28 @@
-Flask==3.0.0
-Flask-CORS==4.0.0
-PyPDF2==3.0.1
-pdfplumber==0.10.3
-google-cloud-aiplatform==1.38.0
-google-generativeai==0.7.2
-gunicorn==21.2.0
-python-dotenv==1.0.0
-Werkzeug==3.0.1
-requests==2.31.0
-python-magic==0.4.27
-psutil==5.9.6
-twilio==8.10.0
-phonenumbers==8.13.25
+# Backend core
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-dotenv==1.2.3
+python-multipart==0.0.32
+pydantic==2.12.5
+
+# Agent framework
+crewai[google-genai]==1.15.21
+
+# Retrieval
+chromadb==1.1.1
+fastembed==0.8.0
+rank_bm25==0.2.2
+
+# Document parsing
+pymupdf==1.28.2
+
+# WhatsApp
+twilio==9.11.1
+
+# Corpus sourcing (used by corpus/scripts/*)
+requests==2.34.2
+beautifulsoup4==4.15.0
+lxml==6.1.3
+
+# Testing
+pytest==8.3.4

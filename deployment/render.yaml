@@ -1,0 +1,20 @@
+# Render Blueprint for the LegalEase backend (BUILD_INSTRUCTIONS.md Stage 7).
+# Import this at https://dashboard.render.com/blueprints -> "New Blueprint
+# Instance", pointing at this repo/branch. Secrets (marked sync: false)
+# must be filled in manually in the Render dashboard after import - never
+# committed here.
+services:
+  - type: web
+    name: legalease-backend
+    runtime: docker
+    dockerfilePath: ./deployment/Dockerfile.backend
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        # Update after the Vercel frontend is deployed - its URL isn't known
+        # until then. Comma-separated if you need more than one origin.
+        value: http://localhost:3000

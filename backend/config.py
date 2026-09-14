@@ -1,37 +1,30 @@
+"""Env-driven settings, shared across the FastAPI app, agents, and retrieval layer."""
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
-class Config:
-    # Google Cloud Configuration
-    GOOGLE_CLOUD_PROJECT = os.getenv('GOOGLE_CLOUD_PROJECT')
-    VERTEX_AI_LOCATION = os.getenv('VERTEX_AI_LOCATION', 'us-central1')
-    GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-    
-    # Application Configuration
-    FLASK_ENV = os.getenv('FLASK_ENV', 'development')
-    MAX_FILE_SIZE = int(os.getenv('MAX_FILE_SIZE', 10485760))  # 10MB default
-    SESSION_TIMEOUT = int(os.getenv('SESSION_TIMEOUT', 3600))  # 1 hour default
-    
-    # Server Configuration
-    PORT = int(os.getenv('PORT', 5000))
-    
-    # Security
-    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
-    
-    @staticmethod
-    def validate_config():
-        """Validate that required configuration is present"""
-        required_vars = ['GOOGLE_CLOUD_PROJECT']
-        missing_vars = []
-        
-        for var in required_vars:
-            if not getattr(Config, var):
-                missing_vars.append(var)
-        
-        if missing_vars:
-            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
-        
-        return True
+BACKEND_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BACKEND_DIR.parent
+
+CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", str(REPO_ROOT / "corpus" / "chroma_data"))
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+
+EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+LEGAL_CORPUS_COLLECTION = "legal_corpus"
+USER_DOCUMENTS_COLLECTION = "user_documents"
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# gemini-3.6-flash (flagship) free tier is capped at ~20 requests/day - far too
+# low for a multi-agent crew. gemini-3.1-flash-lite's free tier is 15 RPM /
+# 1000 req/day, which is what this project's "conserve free-tier quota"
+# design principle actually needs (see CHANGES.md).
+AGENT_LLM_MODEL = "gemini/gemini-3.1-flash-lite"
+AGENT_MAX_RPM = 12
+
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER")

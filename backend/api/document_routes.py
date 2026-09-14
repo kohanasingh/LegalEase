@@ -1,149 +1,84 @@
-from flask import Blueprint, request, jsonify
-from datetime import datetime
-import logging
-import traceback
+"""
+Upload endpoint + status polling, per ARCHITECTURE.md §1 data flow:
+POST /upload -> doc_id (async processing) -> frontend polls /status ->
+GET /analysis once complete.
 
-from config import Config
-from services.pdf_processor import pdf_processor
-from services.ai_analyzer import ai_analyzer
-from services.document_storage import document_storage
-from utils.validators import validate_pdf_file, validate_question, sanitize_filename
+Pipeline: parse -> chunk -> embed -> store into `user_documents` -> run
+the Analysis Crew on the full parsed text -> store its (guardrail-reviewed)
+output for GET /analysis.
+"""
+import uuid
 
-logger = logging.getLogger(__name__)
+from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
 
-# Create blueprint for document-related routes
-document_bp = Blueprint('document', __name__)
+from backend.agents.crew_analysis import run_analysis_crew
+from backend.retrieval.chroma_client import get_user_documents_collection
+from backend.retrieval.embeddings import embed_texts
+from backend.services import analysis_storage, document_storage, job_queue
+from backend.tools.pdf_parser_tool import extract_text_from_pdf_bytes
+from backend.utils.chunking import chunk_document
+from backend.utils.validators import UploadValidationError, validate_upload
 
-@document_bp.route('/delete/<document_id>', methods=['DELETE'])
-def delete_document(document_id):
-    """Delete a document and its analysis results"""
+router = APIRouter(prefix="/api/documents", tags=["documents"])
+
+
+def process_document(doc_id: str, file_bytes: bytes) -> None:
     try:
-        if not document_id or not document_id.strip():
-            return jsonify({
-                'success': False,
-                'error': {
-                    'code': 'INVALID_DOCUMENT_ID',
-                    'message': 'Document ID is required',
-                    'details': 'Please provide a valid document ID'
-                }
-            }), 400
-        
-        # Delete document from storage
-        deleted = document_storage.delete_document(document_id.strip())
-        
-        if deleted:
-            logger.info(f"Successfully deleted document {document_id}")
-            return jsonify({
-                'success': True,
-                'message': 'Document deleted successfully',
-                'document_id': document_id
-            }), 200
-        else:
-            return jsonify({
-                'success': False,
-                'error': {
-                    'code': 'DOCUMENT_NOT_FOUND',
-                    'message': 'Document not found',
-                    'details': 'Document may have already been deleted or expired'
-                }
-            }), 404
-            
-    except Exception as e:
-        logger.error(f"Document deletion error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': {
-                'code': 'DELETION_ERROR',
-                'message': 'Failed to delete document',
-                'details': 'Please try again or contact support'
-            }
-        }), 500
+        job_queue.set_status(doc_id, "parsing")
+        text = extract_text_from_pdf_bytes(file_bytes)
 
-@document_bp.route('/info/<document_id>', methods=['GET'])
-def get_document_info(document_id):
-    """Get information about a document"""
-    try:
-        if not document_id or not document_id.strip():
-            return jsonify({
-                'success': False,
-                'error': {
-                    'code': 'INVALID_DOCUMENT_ID',
-                    'message': 'Document ID is required',
-                    'details': 'Please provide a valid document ID'
-                }
-            }), 400
-        
-        # Retrieve document
-        document = document_storage.get_document(document_id.strip())
-        
-        if not document:
-            return jsonify({
-                'success': False,
-                'error': {
-                    'code': 'DOCUMENT_NOT_FOUND',
-                    'message': 'Document not found or expired',
-                    'details': 'Document may have been deleted or expired'
-                }
-            }), 404
-        
-        # Prepare document info (without full text for security)
-        document_info = {
-            'document_id': document_id,
-            'filename': document.get('filename', 'Unknown'),
-            'created_at': document.get('created_at').isoformat() + 'Z' if document.get('created_at') else None,
-            'expires_at': document.get('expires_at').isoformat() + 'Z' if document.get('expires_at') else None,
-            'text_length': len(document.get('text', '')),
-            'has_analysis': document.get('analysis_result') is not None
-        }
-        
-        # Include analysis summary if available
-        if document.get('analysis_result'):
-            analysis = document['analysis_result']
-            document_info['analysis_summary'] = {
-                'summary_length': len(analysis.get('summary', '')),
-                'key_points_count': len(analysis.get('key_points', [])),
-                'warnings_count': len(analysis.get('warnings', []))
-            }
-        
-        return jsonify({
-            'success': True,
-            'document_info': document_info
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Document info error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': {
-                'code': 'INFO_ERROR',
-                'message': 'Failed to retrieve document information',
-                'details': 'Please try again or contact support'
-            }
-        }), 500
+        job_queue.set_status(doc_id, "chunking")
+        chunks = chunk_document(text)
+        if not chunks:
+            raise ValueError("No extractable text found in this PDF (it may be a scanned image).")
 
-@document_bp.route('/stats', methods=['GET'])
-def get_storage_stats():
-    """Get storage statistics (for monitoring)"""
+        job_queue.set_status(doc_id, "embedding")
+        embeddings = embed_texts(chunks)
+
+        collection = get_user_documents_collection()
+        ids = [f"{doc_id}_chunk_{i}" for i in range(len(chunks))]
+        metadatas = [
+            {"source_type": "user_doc", "doc_id": doc_id, "chunk_index": i}
+            for i in range(len(chunks))
+        ]
+        collection.add(ids=ids, documents=chunks, embeddings=embeddings, metadatas=metadatas)
+        document_storage.set_chunk_count(doc_id, len(chunks))
+
+        job_queue.set_status(doc_id, "analyzing")
+        analysis = run_analysis_crew(text)
+        analysis_storage.set_analysis(doc_id, analysis.model_dump())
+
+        job_queue.set_status(doc_id, "complete", {"chunk_count": len(chunks)})
+    except Exception as exc:
+        job_queue.set_status(doc_id, "failed", {"error": str(exc)})
+
+
+@router.post("/upload")
+async def upload_document(background_tasks: BackgroundTasks, file: UploadFile):
+    file_bytes = await file.read()
     try:
-        stats = document_storage.get_stats()
-        
-        return jsonify({
-            'success': True,
-            'stats': {
-                'total_documents': stats.get('total_documents', 0),
-                'oldest_document': stats.get('oldest_document').isoformat() + 'Z' if stats.get('oldest_document') else None,
-                'newest_document': stats.get('newest_document').isoformat() + 'Z' if stats.get('newest_document') else None,
-                'timestamp': datetime.utcnow().isoformat() + 'Z'
-            }
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Storage stats error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': {
-                'code': 'STATS_ERROR',
-                'message': 'Failed to retrieve storage statistics',
-                'details': str(e)
-            }
-        }), 500
+        validate_upload(file.filename, file.content_type, len(file_bytes))
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    doc_id = str(uuid.uuid4())
+    document_storage.create_document(doc_id, file.filename)
+    job_queue.set_status(doc_id, "uploaded")
+    background_tasks.add_task(process_document, doc_id, file_bytes)
+    return {"doc_id": doc_id}
+
+
+@router.get("/{doc_id}/status")
+async def get_document_status(doc_id: str):
+    status = job_queue.get_status(doc_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Unknown doc_id")
+    return status
+
+
+@router.get("/{doc_id}/analysis")
+async def get_document_analysis(doc_id: str):
+    analysis = analysis_storage.get_analysis(doc_id)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Analysis not available for this doc_id")
+    return analysis

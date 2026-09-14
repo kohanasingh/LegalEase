@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+frontend/.env*.local
+
+# Environment
+.env
+
+# Corpus raw sources (large, re-fetchable) — chroma_data IS committed (baked build artifact)
+corpus/raw/*
+!corpus/raw/.gitkeep
+
+# Project planning docs (not part of the shipped repo) — anchored to repo
+# root only, so this doesn't also swallow frontend/CLAUDE.md (a legitimate,
+# unrelated file Next.js's own tooling generates and expects committed)
+/BUILD_INSTRUCTIONS.md
+/CLAUDE.md
+/PROJECT.md
+/ARCHITECTURE.md
+/CHANGES.md
+
+# Claude Code session state
+.claude/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log

@@ -1,0 +1,3 @@
+corpus/chroma_data/** -text
+*.bin binary
+*.sqlite3 binary
